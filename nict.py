@@ -76,7 +76,7 @@ def _get_layout(X,order):
     
 # FIXME: Why do minimum energy and optimal energy have different output lengths?
 # TO-DO: For-loop could be parallelized using joblib?
-def state_to_state_transition(A,T,B,X,rho=None,S=None,order='combinations',n_jobs=None):
+def state_to_state_transition(A,T,B,X,rho=None,S=None,order='combinations'):
     '''Compute state-to-state-transitions using network_control.energies.minimum_energy
     or network_control.energies.optimal_energy. If rho and S are provided, function
     will compute optimal energy, otherwise it will compute minimum energy.
@@ -271,22 +271,26 @@ def get_u_agg_df(A,T,B,X,rho=None,S=None,order='combinations',method='auc',
 def state_to_state_differences(X,order):
     '''For each combination of states compute difference between nodes'''
 
-    m,n = X.shape
-    indices = np.arange(m)
+    n,n_combinations,idxs = _get_layout(X,order)
     
-    if order=='permutations':
-        indices_combos = [(src,tgt) for (src,tgt) in permutations(indices,2)]
-    elif order=='combinations':
-        indices_combos = [(src,tgt) for (src,tgt) in combinations(indices,2)]
+    state_diffs = np.zeros((n_combinations,n))
         
-    n_combos = len(indices_combos)
-    
-    state_diffs = np.zeros((n_combos,n))
-        
-    for idx,(src,tgt) in enumerate(indices_combos):
-        state_diffs[idx,:] = X[src,:]-X[tgt,:]
+    for idx,src,tgt in idxs:
+        state_diffs[idx,:] = X[src,:] - X[tgt,:]
     
     return state_diffs
+
+def state_to_state_sums(X,order):
+    '''For each combination of states compute difference between nodes'''
+
+    n,n_combinations,idxs = _get_layout(X,order)
+    
+    state_sums = np.zeros((n_combinations,n))
+        
+    for idx,src,tgt in idxs:
+        state_sums[idx,:] = X[src,:] + X[tgt,:]
+    
+    return state_sums
 
 def get_state_diff_df(X,order='combinations',area_labels=None,state_names=None,
                       task_names=None,region_labels=None):
@@ -295,6 +299,18 @@ def get_state_diff_df(X,order='combinations',area_labels=None,state_names=None,
     state_diffs = state_to_state_differences(X,order)
     state_diff_df = _get_state_to_state_df(state_diffs,order,area_labels,state_names,
                                            task_names,'state_diff',region_labels
+                                           )
+
+    return state_diff_df
+
+
+def get_state_sum_df(X,order='combinations',area_labels=None,state_names=None,
+                      task_names=None,region_labels=None):
+    '''Produce a plottable data frame for a state-to-state difference array'''
+    
+    state_diffs = state_to_state_sums(X,order)
+    state_diff_df = _get_state_to_state_df(state_diffs,order,area_labels,state_names,
+                                           task_names,'state_sum',region_labels
                                            )
 
     return state_diff_df
