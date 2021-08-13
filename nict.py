@@ -10,75 +10,28 @@ to provide core functionalities for NCT. These should be located in control_pack
 import numpy as np
 import pandas as pd
 from itertools import permutations,combinations
-from network_control.energies import minimum_energy,optimal_energy
+from network_control.energies import minimum_input,optimal_input,integrate_u
 
-###############################################################################
-## Possible pull requests for control_package #################################
-###############################################################################
-
-def state_trajectory(A,xi,T):
-    """This function caclulates the trajectory for the network given our model
-     if there are no constraints, and the target state is unknown, using the
-     control equation precess x(t+1) = Ax(t). x(t) is the state vector, A is
-     the adjacency matrix.
+def _set_transition_design(X,order):
+    '''Define all necessary variables for a state-to-state-analysis'''
     
-    Args:
-     A             : NxN state matrix (numpy array), where N is the number of nodes in your
-                   network (for example, a structural connectivity matrix 
-                   constructed from DTI). A should be stable to prevent
-                   uncontrolled trajectories.
-         
-     xi            : Nx1 initial state (numpy array) of your system where N is the number of
-                   nodes. xi MUST have N rows. 
-    
-    T              : Number of time points, int
-        
-      Returns:
-     x             : x is the NxT trajectory (numpy array) that results from simulating
-                   x(t+1) = Ax(t)
-    
-     @author JStiso 
-     June 2017
-    """
-
-    # Simulate trajectory
-    N = np.size(A,0)
-
-    # initialize x
-    x = np.zeros((N,T))
-    xt = xi
-    for t in range(T):
-        x[:,t] = np.reshape(xt, N) # annoying python 1d array thing
-        xt_1 = np.matmul(A,xt)
-        xt = xt_1
-    return x
-
-###############################################################################
-## Extensions #################################################################
-###############################################################################
-
-## Control Energy Stuff #######################################################
-
-def _get_layout(X,order):
-    '''Define for-loop layout'''
-    
-    m,n = X.shape
-    indices = np.arange(m)
+    n_states,n_nodes = X.shape
+    indices = np.arange(n_states)
     
     if order=='permutations':
         idxs = [(idx,src,tgt) for idx,(src,tgt) in enumerate(permutations(indices,2))]
     elif order=='combinations':
         idxs = [(idx,src,tgt) for idx,(src,tgt) in enumerate(combinations(indices,2))]
 
-    n_combinations = len(idxs)
+    n_transitions = len(idxs)
     
-    return n,n_combinations,idxs
+    return n_nodes,n_transitions,idxs
     
 # FIXME: Why do minimum energy and optimal energy have different output lengths?
 # TO-DO: For-loop could be parallelized using joblib?
-def state_to_state_transition(A,T,B,X,rho=None,S=None,order='combinations'):
-    '''Compute state-to-state-transitions using network_control.energies.minimum_energy
-    or network_control.energies.optimal_energy. If rho and S are provided, function
+def state_to_state_transition(A,T,B,X,rho,S,order):
+    '''Compute state-to-state-transitions using network_control.energies.minimum_input
+    or network_control.energies.optimal_input. If rho and S are provided, function
     will compute optimal energy, otherwise it will compute minimum energy.
     
     Parameters
@@ -119,80 +72,34 @@ def state_to_state_transition(A,T,B,X,rho=None,S=None,order='combinations'):
 
     '''
 
-    n,n_combinations,idxs = _get_layout(X,order)
+    n_nodes,n_transitions,idxs = _set_transition_design(X,order)
 
     if rho is not None and S is not None:
-        shape_out = (1000*T+1,n,n_combinations) # 1001 is a fixed value in control_package
+        shape_out = (1000*T+1,n_nodes,n_transitions) # 1000*T+1 is currently a fixed output shape
         x_out = np.zeros(shape_out)
         u_out = np.zeros(shape_out)
         
         for idx,src,tgt in idxs:
-            
-            x_out[:,:,idx],u_out[:,:,idx],_ = optimal_energy(A,T,B,x0=X[src,:].reshape(-1,1),xf=X[tgt,:].reshape(-1,1),rho=rho,S=S)
+            x_out[:,:,idx],u_out[:,:,idx],_ = optimal_input(A,T,B,x0=X[src,:],xf=X[tgt,:],rho=rho,S=S)
         
     elif rho is None and S is None:
-        shape_out = (1001,n,n_combinations) # 1001 is a fixed value in control_package
+        shape_out = (1001,n_nodes,n_transitions) # 1001 is currently a fixed output shape
         x_out = np.zeros(shape_out)
         u_out = np.zeros(shape_out)
         
         for idx,src,tgt in idxs:
-            
-            x_out[:,:,idx],u_out[:,:,idx],_ = minimum_energy(A,T,B,x0=X[src,:],xf=X[tgt,:])
+            x_out[:,:,idx],u_out[:,:,idx],_ = minimum_input(A,T,B,x0=X[src,:],xf=X[tgt,:])
     
     return x_out,u_out
 
-# FIXME: network_control now offers such a function (however, not supporting riemann sum)
-def aggregate_energy(u,method='auc',absolute_values=False):
-    '''Aggregate control energy over all timepoints.
-    https://github.com/BassettLab/control_package/blob/main/docs/pages/getting_started.rst    
-    
-    Parameters
-    ----------
-    u : numpy.array
-        NxT array with control energies as returned from network_control.energies.minimum_energy 
-        or network_control.energies.optimal_energy.
-    
-    method: str
-        Method for aggregating energy for each node over time. User can choose
-        between 'auc' (computing area under the curve), or 'log_ss'
-        for computing the logarithm of sum of squares divided by the number of
-        time points (Default = 'auc')
-    
-    absolute_values: boolean
-        Transform the resulting vector to absolute values (Default: False)
-
-    Returns
-    -------
-    u_agg : numpy.array
-        Aggregated array
-
-    '''
-    if method == 'auc':
-        u_agg = np.trapz(u**2,axis=0)
-    elif method == 'log_ss':
-        u_agg = np.log(np.sum(u**2,axis=0) / len(u))
-    
-    if absolute_values:
-        u_agg = np.abs(u_agg)
-    
-    return u_agg
-
-def state_to_state_aggregation(u_out,method='auc',absolute_values=False):
-    '''Aggregate control energy as returned from nct_utils.state_to_state_transition
+def state_to_state_aggregation(u_out):
+    '''Aggregate control energy as returned from nict.state_to_state_transition
 
     Parameters
     ----------
     u_out : np.array
         TxNxM matrix, where T is the number of time points, N is the number
         of nodes and M denotes each combination of states.
-    method : str, optional
-        Method for aggregating energy for each node over time. User can choose
-        between 'auc' (computing area under the curve), or 'log_ss'
-        for computing the logarithm of sum of squares divided by the number of
-        time points (Default = 'auc'). The default is 'auc'.
-    absolute_values: boolean
-        Transform the resulting vector to absolute values (Default: False)
-
     Returns
     -------
     u_agg_out : np.array
@@ -202,115 +109,100 @@ def state_to_state_aggregation(u_out,method='auc',absolute_values=False):
 
     '''
 
-    T,n,m = u_out.shape
-    u_agg_out = np.zeros((m,n))
+    T,n_nodes,n_states = u_out.shape
+    u_agg_out = np.zeros((n_states,n_nodes))
         
-    for i in range(m):
-        u_agg_out[i,:] = aggregate_energy(u_out[:,:,i],method,absolute_values)
+    for i in range(n_states):
+        u_agg_out[i,:] = integrate_u(u_out[:,:,i])
         
     return u_agg_out
 
-# TO-DO: It might be more elegant and less verbose to provide all 'style'-variables (area_labels,
-# state_names,task_names,value_name,region_labels) as a dictionary and not as singular
-# variables
-# TO-DO: None of the style variables should be necessary to create this dataframe
-def _get_state_to_state_df(a,order,area_labels=None,state_names=None,task_names=None,
-                           value_name='value',region_labels=None):
-    '''Produce a plottable data frame from a state-to-state-array'''
+def get_state_to_state_df_variables(order,style_dict):
+    '''Get data frame information from style dict'''
     
+    src_tgt = None
+    transition_names = None
+    src_tgt_grp = None
+    
+    if 'state_labels' in style_dict:
+        if order=='permutations':
+            src_tgt = [(src,tgt) for (src,tgt) in permutations(style_dict['state_labels'],2)]
+            transition_names = [f"{src}-{tgt}" for (src,tgt) in src_tgt]
+        elif order=='combinations':
+            src_tgt = [(src,tgt) for (src,tgt) in combinations(style_dict['state_labels'],2)]
+            transition_names = [f"{src}-{tgt}" for (src,tgt) in src_tgt]
+    
+    if 'state_groups' in style_dict:
+        if order=='permutations':
+            src_tgt_grp = [(src,tgt) for (src,tgt) in permutations(style_dict['state_groups'],2)]
+        elif order=='combinations':
+            src_tgt_grp = [(src,tgt) for (src,tgt) in combinations(style_dict['state_groups'],2)]
+
+    return src_tgt,transition_names,src_tgt_grp
+
+def get_state_to_state_df(state_to_state_array,order,style_dict):
+    '''Produce data frame from state-to-state-array'''
+
     # create data frame from state-to-state array
-    df = pd.DataFrame(a,columns=area_labels)
+    state_to_state_df = pd.DataFrame(state_to_state_array,columns=style_dict['node_labels'])
     
-    # add state and task infos
-    if order=='permutations':
-        if isinstance(state_names,(list,pd.Series)):
-            state_name_combos = [(src,tgt) for (src,tgt) in permutations(state_names,2)]
-            df[['source_state','target_state']] = pd.DataFrame(state_name_combos)
-            df['src_tgt'] = [f"{src}-{tgt}" for (src,tgt) in permutations(state_names,2)]
-        if isinstance(task_names,(list,pd.Series)):
-            task_name_combos = [(src,tgt) for (src,tgt) in permutations(task_names,2)]
-            df[['source_task','target_task']] = pd.DataFrame(task_name_combos)
-            
-    elif order=='combinations':
-        if isinstance(state_names,(list,pd.Series)):
-            state_name_combos = [(src,tgt) for (src,tgt) in combinations(state_names,2)]
-            df[['source_state','target_state']] = pd.DataFrame(state_name_combos)
-            df['src_tgt'] = [f"{src}-{tgt}" for (src,tgt) in combinations(state_names,2)]
-        if isinstance(task_names,(list,pd.Series)):
-            task_name_combos = [(src,tgt) for (src,tgt) in combinations(task_names,2)]
-            df[['source_task','target_task']] = pd.DataFrame(task_name_combos)
-
+    # add information from style dict
+    src_tgt,transition_names,src_tgt_grp = get_state_to_state_df_variables(order,style_dict)
+    
+    if src_tgt:
+        state_to_state_df[['source_state','target_state']] = src_tgt
+        state_to_state_df['transition_name'] = transition_names
+    if src_tgt_grp:
+        state_to_state_df[['source_group','target_group']] = src_tgt_grp
+    
     # bring data frame to long format (easier for plotting)
-    id_vars = df.columns[~df.columns.isin(area_labels)]
-    df = df.melt(id_vars=id_vars,value_name=value_name)
+    id_vars = state_to_state_df.columns[~state_to_state_df.columns.isin(style_dict['node_labels'])]
+    state_to_state_df = state_to_state_df.melt(id_vars=id_vars,var_name='node_label')
     
-    if isinstance(region_labels,(list,pd.Series)):
-        area_to_region_mapper = dict(zip(area_labels,region_labels))
-        df['region_label'] = df['area_label'].map(area_to_region_mapper)
-    
-    return df
+    if 'node_groups' in style_dict:
+        map_dict = dict(zip(style_dict['node_labels'],style_dict['node_groups']))
+        state_to_state_df['node_group'] = state_to_state_df['node_label'].map(map_dict)
 
-def get_u_agg_df(A,T,B,X,rho=None,S=None,order='combinations',method='auc',
-                 absolute_values=False,area_labels=None,state_names=None,
-                 task_names=None,value_name='value',region_labels=None):
+    return state_to_state_df
+
+def get_u_agg_df(A,T,B,X,rho,S,order,style_dict):
     '''Produce a plottable data frame for a state-to-state energy array'''
 
     # compute each state-to-state transition and aggregate control energy
     x_out,u_out = state_to_state_transition(A,T,B,X,rho,S,order)
-    u_agg = state_to_state_aggregation(u_out,method=method,absolute_values=absolute_values)
+    u_agg_out = state_to_state_aggregation(u_out)
                                        
     # create data frame
-    u_agg_df = _get_state_to_state_df(u_agg,order,area_labels,state_names,
-                                      task_names,'u_agg',region_labels
-                                      )
+    u_agg_out_df = get_state_to_state_df(u_agg_out,order,style_dict)
+    u_agg_out_df.rename(columns={'value':'u_agg'},inplace=True)
     
-    return u_agg_df
+    return u_agg_out_df
 
 ## Other Stuff ###############################################################
 
-def state_to_state_differences(X,order):
-    '''For each combination of states compute difference between nodes'''
+def state_to_state_comparison(X,kind,order):
+    '''Compare each combination of states node-wise'''
 
-    n,n_combinations,idxs = _get_layout(X,order)
+    n_nodes,n_transitions,idxs = _set_transition_design(X,order)
+    state_comparison_array = np.zeros((n_transitions,n_nodes))
     
-    state_diffs = np.zeros((n_combinations,n))
-        
-    for idx,src,tgt in idxs:
-        state_diffs[idx,:] = X[src,:] - X[tgt,:]
+    if kind == 'state_difference':
+        for idx,src,tgt in idxs:
+            state_comparison_array[idx,:] = X[src,:] - X[tgt,:]
+    elif kind == 'state_sum':
+        for idx,src,tgt in idxs:
+            state_comparison_array[idx,:] = X[src,:] + X[tgt,:]
+    elif kind == 'state_mean':
+        for idx,src,tgt in idxs:
+            state_comparison_array[idx,:] = np.mean(np.array([X[src,:],X[tgt,:]]),axis=0)
     
-    return state_diffs
+    return state_comparison_array
 
-def state_to_state_sums(X,order):
-    '''For each combination of states compute difference between nodes'''
-
-    n,n_combinations,idxs = _get_layout(X,order)
+def get_state_comparison_df(X,kind,order,style_dict):
+    '''Produce a plottable data frame from a a state-to-state array'''
     
-    state_sums = np.zeros((n_combinations,n))
-        
-    for idx,src,tgt in idxs:
-        state_sums[idx,:] = X[src,:] + X[tgt,:]
+    state_comparison_array = state_to_state_comparison(X,kind,order)
+    state_comparison_df = get_state_to_state_df(state_comparison_array,order,style_dict)
+    state_comparison_df.rename(columns={'value':kind},inplace=True)
     
-    return state_sums
-
-def get_state_diff_df(X,order='combinations',area_labels=None,state_names=None,
-                      task_names=None,region_labels=None):
-    '''Produce a plottable data frame for a state-to-state difference array'''
-    
-    state_diffs = state_to_state_differences(X,order)
-    state_diff_df = _get_state_to_state_df(state_diffs,order,area_labels,state_names,
-                                           task_names,'state_diff',region_labels
-                                           )
-
-    return state_diff_df
-
-
-def get_state_sum_df(X,order='combinations',area_labels=None,state_names=None,
-                      task_names=None,region_labels=None):
-    '''Produce a plottable data frame for a state-to-state difference array'''
-    
-    state_diffs = state_to_state_sums(X,order)
-    state_diff_df = _get_state_to_state_df(state_diffs,order,area_labels,state_names,
-                                           task_names,'state_sum',region_labels
-                                           )
-
-    return state_diff_df
+    return state_comparison_df
