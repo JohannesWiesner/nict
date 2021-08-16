@@ -73,22 +73,19 @@ def state_to_state_transition(A,T,B,X,rho,S,order):
     '''
 
     n_nodes,n_transitions,idxs = _set_transition_design(X,order)
+    
+    x_out = [None] * n_transitions
+    u_out = [None] * n_transitions
 
     if rho is not None and S is not None:
-        shape_out = (int(1000*T+1),n_nodes,n_transitions) # 1000*T+1 is currently a fixed output shape
-        x_out = np.zeros(shape_out)
-        u_out = np.zeros(shape_out)
-        
+       
         for idx,src,tgt in idxs:
-            x_out[:,:,idx],u_out[:,:,idx],_ = optimal_input(A,T,B,x0=X[src,:],xf=X[tgt,:],rho=rho,S=S)
+            x_out[idx],u_out[idx],_ = optimal_input(A,T,B,x0=X[src,:],xf=X[tgt,:],rho=rho,S=S)
         
     elif rho is None and S is None:
-        shape_out = (1001,n_nodes,n_transitions) # 1001 is currently a fixed output shape
-        x_out = np.zeros(shape_out)
-        u_out = np.zeros(shape_out)
-        
+
         for idx,src,tgt in idxs:
-            x_out[:,:,idx],u_out[:,:,idx],_ = minimum_input(A,T,B,x0=X[src,:],xf=X[tgt,:])
+            x_out[idx],u_out[idx],_ = minimum_input(A,T,B,x0=X[src,:],xf=X[tgt,:])
     
     return x_out,u_out
 
@@ -109,11 +106,12 @@ def state_to_state_aggregation(u_out):
 
     '''
 
-    T,n_nodes,n_states = u_out.shape
+    n_states = len(u_out)
+    n_nodes = u_out[0].shape[1]
     u_agg_out = np.zeros((n_states,n_nodes))
         
     for i in range(n_states):
-        u_agg_out[i,:] = integrate_u(u_out[:,:,i])
+        u_agg_out[i,:] = integrate_u(u_out[i])
         
     return u_agg_out
 
