@@ -75,7 +75,7 @@ def state_to_state_transition(A,T,B,X,rho,S,order):
     n_nodes,n_transitions,idxs = _set_transition_design(X,order)
 
     if rho is not None and S is not None:
-        shape_out = (1000*T+1,n_nodes,n_transitions) # 1000*T+1 is currently a fixed output shape
+        shape_out = (int(1000*T+1),n_nodes,n_transitions) # 1000*T+1 is currently a fixed output shape
         x_out = np.zeros(shape_out)
         u_out = np.zeros(shape_out)
         
