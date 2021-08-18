@@ -76,18 +76,19 @@ def state_to_state_transition(A,T,B,X,rho,S,order):
     
     x_out = [None] * n_transitions
     u_out = [None] * n_transitions
+    e_out = [None] * n_transitions
 
     if rho is not None and S is not None:
        
         for idx,src,tgt in idxs:
-            x_out[idx],u_out[idx],_ = optimal_input(A,T,B,x0=X[src,:],xf=X[tgt,:],rho=rho,S=S)
+            x_out[idx],u_out[idx],e_out[idx] = optimal_input(A,T,B,x0=X[src,:],xf=X[tgt,:],rho=rho,S=S)
         
     elif rho is None and S is None:
 
         for idx,src,tgt in idxs:
-            x_out[idx],u_out[idx],_ = minimum_input(A,T,B,x0=X[src,:],xf=X[tgt,:])
+            x_out[idx],u_out[idx],e_out[idx] = minimum_input(A,T,B,x0=X[src,:],xf=X[tgt,:])
     
-    return x_out,u_out
+    return x_out,u_out,e_out
 
 def state_to_state_aggregation(u_out):
     '''Aggregate control energy as returned from nict.state_to_state_transition
