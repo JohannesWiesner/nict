@@ -168,7 +168,7 @@ def get_u_agg_df(A,T,B,X,rho,S,order,style_dict):
     '''Produce a plottable data frame for a state-to-state energy array'''
 
     # compute each state-to-state transition and aggregate control energy
-    x_out,u_out = state_to_state_transition(A,T,B,X,rho,S,order)
+    x_out,u_out,e_out = state_to_state_transition(A,T,B,X,rho,S,order)
     u_agg_out = state_to_state_aggregation(u_out)
                                        
     # create data frame
