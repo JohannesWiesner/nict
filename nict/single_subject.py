@@ -351,7 +351,29 @@ def get_subject_transition_df(A_df,subject_id,n_nodes,c,version,T,B,X_df_subject
 
 # TODO: It should also be possible to set func to a custom function
 def state_to_state_comparison(X,func,order):
-    '''Compute one operation for each source and target state'''
+    '''one operation for each source and target state
+    
+    Parameters
+    ----------
+    X : np.array
+        MxN matrix, where M is the number of states and N is the number of nodes.
+        Each row represents one state.
+    func : str
+        Function that should be applied using one source and one target state. Can 
+        be 'difference' to compute difference between two states, 'sum' to compute
+        the sum of two states or a custom function that takes in one source and one
+        target state as input
+    order: str
+        Defines transitions design. Can be 'combinations' (order does not matter), 
+        'permutations' (order does matter),'product' (order does matter including self-transitions) 
+        or 'stability'(only self-transitions)
+
+    Returns
+    -------
+    state_comparison_array : np.array
+        Each row represents one operation using a source and a target state.
+
+    '''
 
     n_states,n_nodes = X.shape
     n_transitions,transition_idxs = _set_transition_order(n_states,order)
@@ -359,10 +381,13 @@ def state_to_state_comparison(X,func,order):
     
     if func == 'difference':
         for idx,src,tgt in transition_idxs:
-            state_comparison_array[idx,:] = X[src,:]-X[tgt,:]
+            state_comparison_array[idx,:] = np.subtract(X[src,:],X[tgt,:])
     elif func == 'sum':
         for idx,src,tgt in transition_idxs:
-            state_comparison_array[idx,:] = X[src,:]+X[tgt,:]
+            state_comparison_array[idx,:] = np.add(X[src,:],X[tgt,:])
+    elif callable(func):
+        for idx,src,tgt in transition_idxs:
+            state_comparison_array[idx,:] = func(X[src,:],X[tgt,:])
 
     return state_comparison_array
 
