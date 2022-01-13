@@ -8,7 +8,7 @@ Functions for doing network control theory related analysis for multiple subject
 import numpy as np
 import pandas as pd
 from joblib import Parallel,delayed
-from single_subject import get_subject_transition_df
+from .single_subject import get_subject_transition_df
 
 # TODO: X_df: check that values are a numpy array
 # TODO: A_df: check that values are numpy array
