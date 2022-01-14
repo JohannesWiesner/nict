@@ -11,10 +11,10 @@ sys.path.append('../nict')
 import numpy as np
 import pandas as pd
 from network_control.energies import optimal_input,integrate_u
-from single_subject import state_to_state_transition,state_to_state_aggregation
-from single_subject import get_transition_df
-from single_subject import get_state_comparison_df
-from multi_subject import get_multi_subject_transition_df
+from nict.single_subject import state_to_state_transition,state_to_state_aggregation
+from nict.single_subject import get_transition_df
+from nict.single_subject import get_state_comparison_df
+from nict.multi_subject import get_multi_subject_transition_df
 from network_control.utils import matrix_normalization
 
 from itertools import product
@@ -29,9 +29,9 @@ A_norm = matrix_normalization(A,c=1,version='continuous')
 X = np.random.rand(4,10) # four example states
 B = np.eye(10)
 S = np.eye(10)
-T = 1
+T = 2.01
 rho = 1
-c=1
+c= 1
 version='continous'
 
 # create artifical state df for two subjects

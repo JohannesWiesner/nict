@@ -104,7 +104,7 @@ def state_to_state_transition(A,T,B,X,rho,S,order):
     n_states,n_nodes = X.shape
     n_transitions,transition_idxs = _set_transition_order(n_states,order)
     
-    shape_out = (int(1000*T+1),n_nodes,n_transitions)
+    shape_out = (round(T*1000)+1,n_nodes,n_transitions)
     X_out = np.zeros(shape_out)
     U_out = np.zeros(shape_out)
     E_out = np.zeros((n_transitions,1))
