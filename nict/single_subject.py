@@ -109,11 +109,13 @@ def state_to_state_transition(A,T,B,X,rho,S,order):
     U_out = np.zeros(shape_out)
     E_out = np.zeros((n_transitions,1))
 
-    if rho is None and S is None:        
+    if rho is None or S is None:
+
         for idx,src,tgt in transition_idxs:
             X_out[:,:,idx],U_out[:,:,idx],E_out[idx] = minimum_input(A,T,B,x0=X[src,:],xf=X[tgt,:])
 
     elif rho is not None and S is not None:
+
         for idx,src,tgt in transition_idxs:
             X_out[:,:,idx],U_out[:,:,idx],E_out[idx] = optimal_input(A,T,B,x0=X[src,:],xf=X[tgt,:],rho=rho,S=S)
         
