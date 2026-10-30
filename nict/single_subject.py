@@ -11,10 +11,6 @@ from itertools import permutations,combinations,product
 from network_control.utils import matrix_normalization
 from network_control.energies import minimum_input,optimal_input,integrate_u
 
-# We have to import integrate from scipy again to avoid the following issue:
-# https://stackoverflow.com/questions/18049687/
-from scipy import integrate
-
 def _set_transition_order(n_states,order):
     '''Define all necessary variables for to compute state-to-state-transitions
     
@@ -53,7 +49,6 @@ def _set_transition_order(n_states,order):
     
     return n_transitions,transition_idxs
 
-# TO-DO: The for-loop inside this function could be parallelized using joblib?
 def state_to_state_transition(A,T,B,X,rho,S,order):
     '''Compute all state-to-state-transitions of one set of states and one 
     adjaceny matrix using network_control.energies.minimum_input or 
@@ -176,96 +171,73 @@ def get_transition_info(state_attributes,order):
     
     return src_tgt_attributes
 
-# TODO: It should be possible to already pass this function arrays in the order
-# of the transition info. this would be useful to create multi-subject data frames.
-# In this case order should be settable to None and all further keywords should already
-# expect the right lists WITHOUT calling get_transition_info. state_names and state_groups
-# would then have to be a list of tuples times the number of subjects. These lists 
-# could be created by using np.tile(get_transition_info,n_subjects)
-# TODO: One could make this function even more abstract by allowing the user to pass two dictionaries
-# The first dictionary would describe (all sorts!) of information about nodes 
-# (e.g. node_dict = {'node_name':['n1','n2'],'node_group':['g1','g2'],...}). If the 
-# dictionary contains only one key than simply add this as column names, if it contains
-# multipel keys than create a multiindex for columns
-# The second dictinaory would describe (all sorts!) of information about the states
-# (e.g. state_dict = {'state_name':['s1','s2'],'state_group':['s1','s2'],...})
-# The keys of the dictionaries would corespond to the column names
-# Same above: When order is set to None, these dictionaries should already contain lists
-# of the same size as the input state_to_state_array
-def get_state_to_state_df(state_to_state_array,order,node_names=None,node_groups=None,state_names=None,state_groups=None,long_format=False):
-    '''Produce data frame from state-to-state-array. All combinations of the keywords arguments
-    can produce a valid dataframe
-    
-    Parameters
-    ----------
-    state_to_state_array : np.array
-        Numpy array where each row defines an operation that was done using a
-        source and a target state.
-    order : str
-        Defines transitions design. Can be 'combinations' (order does not matter), 
-        'permutations' (order does matter),'product' (order does matter including self-transitions) 
-        or 'stability'(only self-transitions)
-    node_names : list of str, optional
-        Describes the names of the nodes. The default is None.
-    node_groups : list of str, optional
-        Describes possible groups for the nodes. The default is None.
-    state_names : list of str, optional
-        Describes names of the states. The default is None.
-    state_groups : list of str, optional
-        Describes possible state groups. The default is None.
-    long_format : boolean, optional
-        Defines if the output data frame should be returned in the long format. 
-        The default is False.
+def get_state_to_state_df(
+    state_to_state_array,
+    order,
+    node_names=None,
+    node_groups=None,
+    state_names=None,
+    state_groups=None,
+    long_format=False
+):
+    """Produce a DataFrame from a state-to-state array."""
 
-    Returns
-    -------
-    df : pd.DataFrame
-        A data frame that holds all information of the input array plus 
-        additional information about the transitions.
-
-    '''
-
-    # create data frame from state-to-state array
+    # Create dataframe
     df = pd.DataFrame(state_to_state_array)
-    
-    # add custom node names if given (otherwise node names are just default integers)
-    if node_names:
+
+    # Add node names
+    if node_names is not None:
         df.columns = node_names
     else:
         node_names = df.columns
-    
-    # add transition info for state names if given
-    if state_names:
-        df[['source_state','target_state']] = get_transition_info(state_names,order)
-        df['transition_name'] = df['source_state'] + '-' + df['target_state']
-    
-    # add transition info for state groups if given
-    if state_groups:
-        df[['source_group','target_group']] = get_transition_info(state_groups,order)
-    
-    # get all names of columns that hold information about transitions
-    transition_columns = df.columns[~df.columns.isin(node_names)].tolist()
-    
+
+    # Add state transition information
+    if state_names is not None:
+        df[['source_state', 'target_state']] = get_transition_info(
+            state_names, order
+        )
+        df['transition_name'] = (
+            df['source_state'] + '-' + df['target_state']
+        )
+
+    # Add state group information
+    if state_groups is not None:
+        df[['source_group', 'target_group']] = get_transition_info(
+            state_groups, order
+        )
+
+    # Identify transition metadata columns
+    transition_columns = df.columns[
+        ~df.columns.isin(node_names)
+    ].tolist()
+
     if transition_columns:
-        
-        # convert to long format using all columns that do not describe nodes as id vars
-        if long_format == True:
-            df = df.melt(id_vars=transition_columns,var_name='node_name')
-            
-            # add node groups (at second last position)
-            if node_groups:
-                node_groups = df['node_name'].map(dict(zip(node_names,node_groups)))
-                df.insert(loc=len(df.columns)-1,column='node_group',value=node_groups)
-                
-        # set all columns that do not describe node names as index
-        elif long_format == False:
-            df.set_index(transition_columns,inplace=True)
-            
-            # add node groups (as second level of a multiindex)
-            if node_groups:
-                df.columns = pd.MultiIndex.from_arrays(arrays=[node_groups,df.columns,],
-                                                       names=['node_group','node_name'])
-                
+
+        if long_format:
+            df = df.melt(
+                id_vars=transition_columns,
+                var_name='node_name'
+            )
+
+            if node_groups is not None:
+                groups = df['node_name'].map(
+                    dict(zip(node_names, node_groups))
+                )
+                df.insert(
+                    loc=len(df.columns) - 1,
+                    column='node_group',
+                    value=groups
+                )
+
+        else:
+            df.set_index(transition_columns, inplace=True)
+
+            if node_groups is not None:
+                df.columns = pd.MultiIndex.from_arrays(
+                    [node_groups, df.columns],
+                    names=['node_group', 'node_name']
+                )
+
     return df
 
 def get_transition_df(A,T,B,X,rho,S,order,**kwargs):
